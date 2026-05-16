@@ -7,7 +7,7 @@
     "backend": "cd backend && npm start",
     "frontend": "cd frontend && npm run dev",
     "build": "cd frontend && npm install && npm run build",
-    "deploy": "cd frontend && npm install && npm run deploy"
+    "deploy": "cd frontend && npm install && npm run build && cd .. && npx wrangler deploy"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
