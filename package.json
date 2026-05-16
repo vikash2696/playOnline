@@ -6,7 +6,7 @@
     "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
     "backend": "cd backend && npm start",
     "frontend": "cd frontend && npm run dev",
-    "build": "rm -rf .wrangler frontend/dist && cd frontend && npm install && npm run build && cd .. && rm -rf frontend/node_modules",
+    "build": "rm -rf .wrangler && mkdir -p frontend && cd frontend && npm install && npm run build && cd dist && echo 'export default { async fetch(request) { return fetch(request); } }' > _worker.js && cd ../.. && rm -rf frontend/node_modules",
     "deploy": "npm run build && npx wrangler deploy"
   },
   "devDependencies": {

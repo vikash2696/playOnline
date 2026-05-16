@@ -1,19 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "playonline",
+  "type": "javascript",
   "compatibility_date": "2026-05-10",
-  "observability": {
-    "enabled": true
-  },
-  "dir": "frontend/dist",
-  "assets": {
-    "directory": "frontend/dist",
-    "binding": "ASSETS"
-  },
+  "workers_dev": true,
   "site": {
-    "bucket": "frontend/dist"
-  },
-  "compatibility_flags": [
-    "nodejs_compat"
-  ]
+    "bucket": "./frontend/dist"
+  }
 }
