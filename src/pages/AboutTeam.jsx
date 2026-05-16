@@ -1,35 +1,30 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 export default function AboutTeam() {
-  const [teams, setTeams] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    const fetchTeamData = async () => {
-      try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000'
-        const response = await fetch(`${apiUrl}/getData`)
-        if (!response.ok) throw new Error('Failed to fetch data')
-        const data = await response.json()
-        setTeams(data.teams || [])
-        setError(null)
-      } catch (err) {
-        console.error('Error fetching team data:', err)
-        setError(err.message)
-      } finally {
-        setLoading(false)
-      }
+  const [teams] = useState([
+    {
+      id: 1,
+      name: 'John Doe',
+      role: 'Developer',
+      email: 'john@example.com'
+    },
+    {
+      id: 2,
+      name: 'Jane Smith',
+      role: 'Designer',
+      email: 'jane@example.com'
+    },
+    {
+      id: 3,
+      name: 'Mike Johnson',
+      role: 'Product Manager',
+      email: 'mike@example.com'
     }
-
-    fetchTeamData()
-  }, [])
+  ])
 
   return (
     <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
       <h2>About - Team</h2>
-      {loading && <p>Loading team data...</p>}
-      {error && <p style={{ color: 'red' }}>Error: {error}</p>}
       {teams.length > 0 ? (
         <table style={{
           width: '100%',
@@ -55,7 +50,7 @@ export default function AboutTeam() {
           </tbody>
         </table>
       ) : (
-        !loading && <p>No team members found</p>
+        <p>No team members found</p>
       )}
     </div>
   )
