@@ -1,9 +1,0 @@
-{
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "playonline",
-  "compatibility_date": "2026-05-10",
-  "main": "frontend/dist/_worker.js",
-  "site": {
-    "bucket": "frontend/dist"
-  }
-}

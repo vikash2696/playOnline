@@ -1,19 +1,24 @@
 {
-  "name": "playonline-fullstack",
+  "name": "playonline",
   "version": "1.0.0",
+  "type": "module",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
-    "backend": "cd backend && npm start",
-    "frontend": "cd frontend && npm run dev",
-    "build": "rm -rf .wrangler && cd frontend && npm install && npm run build && cd .. && node create-worker.js && rm -rf frontend/node_modules",
-    "deploy": "npm run build && npx wrangler deploy"
+    "dev": "concurrently \"node server.js\" \"vite\"",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.14.1"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "PlayOnline - Full stack application with React frontend and Node.js backend"
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
+    "vite": "^6.0.0"
+  }
 }
