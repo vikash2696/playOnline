@@ -6,8 +6,8 @@
     "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
     "backend": "cd backend && npm start",
     "frontend": "cd frontend && npm run dev",
-    "build": "cd frontend && npm install && npm run build",
-    "deploy": "cd frontend && npm install && npm run build && cd .. && npx wrangler deploy"
+    "build": "rm -rf .wrangler && cd frontend && npm install && npm run build && mv dist/wrangler.json ../wrangler.json 2>/dev/null || true",
+    "deploy": "npm run build && npx wrangler deploy"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
