@@ -40,6 +40,12 @@ export default function FavouritePlay() {
     if (typeof window === 'undefined') return false
     return window.localStorage.getItem('yt-play-on-screen-close') === 'true'
   })
+  const [audioOnlyEnabled, setAudioOnlyEnabled] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem('yt-audio-only-enabled') === 'true'
+  })
+  const [audioOnlyMode, setAudioOnlyMode] = useState(false)
+  const isMobileDevice = typeof window !== 'undefined' && /Mobi|Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent)
 
   const iframeSrc = useMemo(() => {
     if (!videoId) return ''
@@ -57,6 +63,23 @@ export default function FavouritePlay() {
     return `https://www.youtube.com/embed/${videoId}?${params.toString()}`
   }, [videoId, playOnScreenClose])
 
+  const audioOnlySrc = useMemo(() => {
+    if (!videoId) return ''
+
+    const params = new URLSearchParams({
+      autoplay: '1',
+      mute: '1',
+      controls: '0',
+      playsinline: '1',
+      rel: '0',
+      modestbranding: '1',
+      enablejsapi: '1',
+      loop: '1',
+    })
+
+    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`
+  }, [videoId])
+
   useEffect(() => {
     const list = readFavorites()
     setFavorites(list)
@@ -70,6 +93,28 @@ export default function FavouritePlay() {
   useEffect(() => {
     localStorage.setItem('yt-play-on-screen-close', playOnScreenClose)
   }, [playOnScreenClose])
+
+  useEffect(() => {
+    localStorage.setItem('yt-audio-only-enabled', String(audioOnlyEnabled))
+  }, [audioOnlyEnabled])
+
+  useEffect(() => {
+    if (!audioOnlyEnabled || !isMobileDevice) {
+      setAudioOnlyMode(false)
+      return
+    }
+
+    const updateAudioOnlyMode = () => {
+      setAudioOnlyMode(document.hidden)
+    }
+
+    updateAudioOnlyMode()
+    document.addEventListener('visibilitychange', updateAudioOnlyMode)
+
+    return () => {
+      document.removeEventListener('visibilitychange', updateAudioOnlyMode)
+    }
+  }, [audioOnlyEnabled, isMobileDevice])
 
   // Background playback feature with Media Session API and Wake Lock
   useEffect(() => {
@@ -188,7 +233,26 @@ export default function FavouritePlay() {
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          marginBottom: 12,
+          marginBottom: 6,
+          fontSize: 14,
+          color: '#1f2937',
+          cursor: 'pointer',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={audioOnlyEnabled}
+          onChange={(e) => setAudioOnlyEnabled(e.target.checked)}
+        />
+        On mobile: play audio only when tab is hidden
+      </label>
+
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          marginBottom: 6,
           fontSize: 14,
           color: '#1f2937',
           cursor: 'pointer',
@@ -199,8 +263,19 @@ export default function FavouritePlay() {
           checked={playOnScreenClose}
           onChange={(e) => setPlayOnScreenClose(e.target.checked)}
         />
-        Keep playing when screen is off / tab is hidden
+        Keep video visible while screen is on
       </label>
+
+      {isMobileDevice && (
+        <p style={{
+          margin: '0 0 12px',
+          fontSize: 12,
+          lineHeight: 1.5,
+          color: '#b45309',
+        }}>
+          Mobile browsers often pause embedded YouTube playback when the tab is hidden. This toggle tries to switch to audio-only mode automatically when the app is backgrounded.
+        </p>
+      )}
 
       <div
         style={{
@@ -324,27 +399,77 @@ export default function FavouritePlay() {
             overflow: 'hidden',
           }}
         >
-          <iframe
-            title="YouTube player"
-            src={iframeSrc}
-            style={{
-              width: '100%',
-              maxWidth: 1000,
-              height: '100%',
-              minHeight: 320,
-              maxHeight: 700,
-              border: '0',
-              borderRadius: '12px',
-              background: '#000',
-              display: 'block',
-            }}
-            allow="autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; accelerometer; camera; microphone; payment; web-share"
-            allowFullScreen
-            referrerPolicy="strict-origin-when-cross-origin"
-            playsInline={true}
-          />
+          {!audioOnlyMode && (
+            <iframe
+              title="YouTube player"
+              src={iframeSrc}
+              style={{
+                width: '100%',
+                maxWidth: 1000,
+                height: '100%',
+                minHeight: 320,
+                maxHeight: 700,
+                border: '0',
+                borderRadius: '12px',
+                background: '#000',
+                display: 'block',
+              }}
+              allow="autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; accelerometer; camera; microphone; payment; web-share"
+              allowFullScreen
+              referrerPolicy="strict-origin-when-cross-origin"
+              playsInline={true}
+            />
+          )}
+
+          {audioOnlyEnabled && audioOnlyMode && (
+            <iframe
+              title="YouTube audio player"
+              src={audioOnlySrc}
+              style={{
+                position: 'absolute',
+                left: '-9999px',
+                width: '1px',
+                height: '1px',
+                opacity: 0,
+                pointerEvents: 'none',
+                border: '0',
+              }}
+              allow="autoplay; encrypted-media"
+              allowFullScreen={false}
+              referrerPolicy="strict-origin-when-cross-origin"
+              playsInline={true}
+            />
+          )}
         </div>
       ) : null}
+
+      {videoId && (
+        <button
+          type="button"
+          onClick={() => setAudioOnlyMode((value) => !value)}
+          title="Toggle audio only mode"
+          style={{
+            position: 'fixed',
+            right: 18,
+            bottom: 18,
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            border: 'none',
+            background: audioOnlyMode ? '#16a34a' : '#0b74de',
+            color: '#fff',
+            fontSize: 18,
+            boxShadow: '0 8px 20px rgba(0,0,0,0.18)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50,
+          }}
+        >
+          🔊
+        </button>
+      )}
     </div>
   )
 }
