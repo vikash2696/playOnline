@@ -193,7 +193,7 @@ export default function FavouritePlay() {
             type="text"
             value={source}
             onChange={handleChange}
-            placeholder="Enter YouTube URL or video ID"
+            placeholder="Enter YouTube URL or video ID here"
             style={{ flex: 1, padding: '10px 12px', borderRadius: '8px', border: '1px solid #ccc', minWidth: 0 }}
           />
           {/* Dropdown icon */}
