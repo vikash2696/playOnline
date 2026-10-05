@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 
 const STORAGE_KEY = 'youtubeFavorites'
 
@@ -37,8 +37,25 @@ export default function FavouritePlay() {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const inputRef = useRef(null)
   const [playOnScreenClose, setPlayOnScreenClose] = useState(() => {
-    return localStorage.getItem('yt-play-on-screen-close') === 'true'
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem('yt-play-on-screen-close') === 'true'
   })
+
+  const iframeSrc = useMemo(() => {
+    if (!videoId) return ''
+
+    const params = new URLSearchParams({
+      autoplay: playOnScreenClose ? '1' : '0',
+      mute: playOnScreenClose ? '1' : '0',
+      controls: '1',
+      playsinline: '1',
+      rel: '0',
+      modestbranding: '1',
+      enablejsapi: '1',
+    })
+
+    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`
+  }, [videoId, playOnScreenClose])
 
   useEffect(() => {
     const list = readFavorites()
@@ -165,6 +182,26 @@ export default function FavouritePlay() {
       margin: 0
     }}>
       <p style={{ marginBottom: 16 }}>Enter YouTube URL/video ID OR Pick from favourites.</p>
+
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          marginBottom: 12,
+          fontSize: 14,
+          color: '#1f2937',
+          cursor: 'pointer',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={playOnScreenClose}
+          onChange={(e) => setPlayOnScreenClose(e.target.checked)}
+        />
+        Keep playing when screen is off / tab is hidden
+      </label>
+
       <div
         style={{
           width: '100%',
@@ -289,7 +326,7 @@ export default function FavouritePlay() {
         >
           <iframe
             title="YouTube player"
-            src={`https://www.youtube.com/embed/${videoId}?autoplay=${playOnScreenClose ? 1 : 0}`}
+            src={iframeSrc}
             style={{
               width: '100%',
               maxWidth: 1000,
@@ -301,8 +338,9 @@ export default function FavouritePlay() {
               background: '#000',
               display: 'block',
             }}
-            allow="autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; accelerometer; camera; microphone; payment"
+            allow="autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; accelerometer; camera; microphone; payment; web-share"
             allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
             playsInline={true}
           />
         </div>
