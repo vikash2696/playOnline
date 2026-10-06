@@ -2,6 +2,21 @@ import { useEffect, useState, useRef } from 'react'
 
 const STORAGE_KEY = 'youtubeFavorites'
 
+function normalizeFavoriteEntry(entry) {
+  if (typeof entry === 'string') {
+    const value = entry.trim()
+    return { value, label: value }
+  }
+
+  if (entry && typeof entry === 'object') {
+    const value = (entry.value || entry.url || entry.source || '').trim()
+    const label = (entry.label || entry.name || value || '').trim()
+    return { value, label: label || value }
+  }
+
+  return { value: '', label: '' }
+}
+
 function getYoutubeId(value) {
   if (!value) return ''
   const url = value.trim()
@@ -15,7 +30,9 @@ function readFavorites() {
   if (typeof window === 'undefined') return []
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
+    const parsed = raw ? JSON.parse(raw) : []
+    if (!Array.isArray(parsed)) return []
+    return parsed.map(normalizeFavoriteEntry).filter(item => item.value)
   } catch {
     return []
   }
@@ -24,7 +41,8 @@ function readFavorites() {
 function saveFavorites(favorites) {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(favorites))
+    const normalized = (Array.isArray(favorites) ? favorites : []).map(normalizeFavoriteEntry).filter(item => item.value)
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
   } catch {
     // ignore write errors
   }
@@ -35,6 +53,7 @@ export default function FavouritePlay() {
   const [videoId, setVideoId] = useState('')
   const [favorites, setFavorites] = useState([])
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [showFavoritesTable, setShowFavoritesTable] = useState(false)
   const inputRef = useRef(null)
   const [playAudio, setPlayAudio] = useState(false)
   const [audioProgress, setAudioProgress] = useState(0)
@@ -43,15 +62,28 @@ export default function FavouritePlay() {
   const [isAudioMuted, setIsAudioMuted] = useState(false)
   const audioPlayerRef = useRef(null)
   const wakeLockRef = useRef(null)
+  const dropdownRef = useRef(null)
 
   useEffect(() => {
     const list = readFavorites()
     setFavorites(list)
     if (list.length > 0) {
-      setSource(list[0])
-      const id = getYoutubeId(list[0])
+      setSource(list[0].value)
+      const id = getYoutubeId(list[0].value)
       if (id) setVideoId(id)
     }
+  }, [])
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!dropdownRef.current) return
+      if (!dropdownRef.current.contains(event.target)) {
+        setDropdownOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [])
 
   useEffect(() => {
@@ -271,6 +303,14 @@ export default function FavouritePlay() {
     }
   }
 
+  const handleClearInput = () => {
+    setSource('')
+    setVideoId('')
+    setPlayAudio(false)
+    setAudioProgress(0)
+    setAudioDuration(0)
+  }
+
   const handlePlayVideo = () => {
     const id = getYoutubeId(source)
     if (!id) {
@@ -350,19 +390,29 @@ export default function FavouritePlay() {
     const id = getYoutubeId(source)
     if (!id) return
     // Prevent duplicate
-    if (favorites.some(fav => getYoutubeId(fav) === id)) {
+    if (favorites.some(fav => getYoutubeId(fav.value) === id)) {
       alert('This video is already in your favourites.')
       return
     }
-    const newFavs = [source, ...favorites]
+    const newFavs = [{ value: source, label: source }, ...favorites]
     setFavorites(newFavs)
     saveFavorites(newFavs)
   }
 
+  const updateFavoriteName = (index, value) => {
+    const updated = favorites.map((item, idx) => {
+      if (idx !== index) return item
+      return { ...item, label: value.trim() || item.value }
+    })
+
+    setFavorites(updated)
+    saveFavorites(updated)
+  }
+
   const handleDropdownSelect = (item) => {
-    setSource(item)
+    setSource(item.value)
     setDropdownOpen(false)
-    const id = getYoutubeId(item)
+    const id = getYoutubeId(item.value)
     if (id) setVideoId(id)
   }
 
@@ -391,6 +441,7 @@ export default function FavouritePlay() {
       >
         {/* Input and dropdown row */}
         <div
+          ref={dropdownRef}
           style={{
             display: 'flex',
             flexDirection: 'row',
@@ -409,6 +460,28 @@ export default function FavouritePlay() {
             placeholder="Enter YouTube URL or video ID here"
             style={{ flex: 1, padding: '10px 12px', borderRadius: '8px', border: '1px solid #ccc', minWidth: 0 }}
           />
+          {source ? (
+            <button
+              type="button"
+              onClick={handleClearInput}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                border: '1px solid #ccc',
+                background: '#f4f6f8',
+                color: '#374151',
+                cursor: 'pointer',
+                fontWeight: 700,
+                fontSize: 18,
+                lineHeight: 1,
+                padding: 0,
+              }}
+              title="Clear text"
+            >
+              ×
+            </button>
+          ) : null}
           {/* Dropdown icon */}
           <span
             onClick={() => setDropdownOpen((v) => !v)}
@@ -445,17 +518,17 @@ export default function FavouritePlay() {
             }}>
               {favorites.map((item, idx) => (
                 <div
-                  key={item + idx}
+                  key={`${item.value}-${idx}`}
                   onClick={() => handleDropdownSelect(item)}
                   style={{
                     padding: '10px 16px',
                     cursor: 'pointer',
-                    background: item === source ? '#e3f2fd' : '#fff',
+                    background: item.value === source ? '#e3f2fd' : '#fff',
                     borderBottom: idx !== favorites.length - 1 ? '1px solid #eee' : 'none',
                     fontSize: 15
                   }}
                 >
-                  {item}
+                  {item.label || item.value}
                 </div>
               ))}
             </div>
@@ -489,8 +562,78 @@ export default function FavouritePlay() {
           >
             Add to Favourite
           </button>
+          {favorites.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setShowFavoritesTable((v) => !v)}
+              style={{
+                background: '#475569',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                padding: '8px 14px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                minWidth: '150px',
+                flex: 1,
+              }}
+            >
+              {showFavoritesTable ? 'Hide Favourite Videos' : 'Show Favourite Videos'}
+            </button>
+          ) : null}
         </div>
       </div>
+      {showFavoritesTable && favorites.length > 0 ? (
+        <div
+          style={{
+            width: '100%',
+            maxWidth: 980,
+            marginTop: 28,
+            background: '#fff',
+            border: '1px solid #e5e7eb',
+            borderRadius: 14,
+            padding: 16,
+            boxShadow: '0 6px 20px rgba(15, 23, 42, 0.08)',
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 12 }}>Favourite Videos</div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  <th style={{ width: '58%', padding: '10px 12px', borderBottom: '1px solid #e5e7eb', textAlign: 'left', wordBreak: 'break-word' }}>Video URL / ID</th>
+                  <th style={{ width: '42%', padding: '10px 12px', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>Display Name</th>
+                </tr>
+              </thead>
+              <tbody>
+                {favorites.map((item, idx) => (
+                  <tr key={`${item.value}-${idx}`}>
+                    <td style={{ padding: '10px 12px', borderBottom: '1px solid #e5e7eb', wordBreak: 'break-word', verticalAlign: 'top' }}>
+                      {item.value}
+                    </td>
+                    <td style={{ padding: '10px 12px', borderBottom: '1px solid #e5e7eb', verticalAlign: 'top' }}>
+                      <input
+                        type="text"
+                        value={item.label || item.value}
+                        onChange={(event) => updateFavoriteName(idx, event.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '9px 10px',
+                          borderRadius: 8,
+                          border: '1px solid #cbd5e1',
+                          boxSizing: 'border-box',
+                          fontSize: 14,
+                        }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
       {playAudio && videoId ? (
         <div
           style={{
