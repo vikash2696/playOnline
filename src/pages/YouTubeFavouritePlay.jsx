@@ -42,6 +42,7 @@ export default function FavouritePlay() {
   const [isAudioPlaying, setIsAudioPlaying] = useState(false)
   const [isAudioMuted, setIsAudioMuted] = useState(false)
   const audioPlayerRef = useRef(null)
+  const wakeLockRef = useRef(null)
 
   useEffect(() => {
     const list = readFavorites()
@@ -181,6 +182,77 @@ export default function FavouritePlay() {
 
     return () => clearInterval(timer)
   }, [playAudio, audioDuration])
+
+  useEffect(() => {
+    if (!playAudio || !videoId) {
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {})
+        wakeLockRef.current = null
+      }
+      return
+    }
+
+    const requestWakeLock = async () => {
+      if (!('wakeLock' in navigator)) return
+      try {
+        if (wakeLockRef.current) {
+          await wakeLockRef.current.release()
+        }
+        wakeLockRef.current = await navigator.wakeLock.request('screen')
+      } catch {
+        // Some browsers or platforms reject wake lock requests automatically.
+      }
+    }
+
+    requestWakeLock()
+
+    const handleVisibilityChange = async () => {
+      if (!playAudio || !videoId) return
+
+      try {
+        if (document.visibilityState === 'visible') {
+          if (audioPlayerRef.current && typeof audioPlayerRef.current.playVideo === 'function') {
+            audioPlayerRef.current.playVideo()
+          }
+          await requestWakeLock()
+        } else {
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'playing'
+          }
+          await requestWakeLock()
+        }
+      } catch {
+        // ignore visibility errors
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: 'YouTube audio',
+        artist: 'YouTube',
+      })
+      navigator.mediaSession.setActionHandler('play', () => {
+        if (audioPlayerRef.current && typeof audioPlayerRef.current.playVideo === 'function') {
+          audioPlayerRef.current.playVideo()
+        }
+      })
+      navigator.mediaSession.setActionHandler('pause', () => {
+        if (audioPlayerRef.current && typeof audioPlayerRef.current.pauseVideo === 'function') {
+          audioPlayerRef.current.pauseVideo()
+        }
+      })
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {})
+        wakeLockRef.current = null
+      }
+    }
+  }, [playAudio, videoId])
 
   const handleChange = (event) => {
     setSource(event.target.value)
