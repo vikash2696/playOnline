@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 const STORAGE_KEY = 'youtubeFavorites'
 
@@ -36,49 +36,12 @@ export default function FavouritePlay() {
   const [favorites, setFavorites] = useState([])
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const inputRef = useRef(null)
-  const [playOnScreenClose, setPlayOnScreenClose] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.localStorage.getItem('yt-play-on-screen-close') === 'true'
-  })
-  const [audioOnlyEnabled, setAudioOnlyEnabled] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.localStorage.getItem('yt-audio-only-enabled') === 'true'
-  })
-  const [audioOnlyMode, setAudioOnlyMode] = useState(false)
-  const isMobileDevice = typeof window !== 'undefined' && /Mobi|Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent)
-
-  const iframeSrc = useMemo(() => {
-    if (!videoId) return ''
-
-    const params = new URLSearchParams({
-      autoplay: playOnScreenClose ? '1' : '0',
-      mute: playOnScreenClose ? '1' : '0',
-      controls: '1',
-      playsinline: '1',
-      rel: '0',
-      modestbranding: '1',
-      enablejsapi: '1',
-    })
-
-    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`
-  }, [videoId, playOnScreenClose])
-
-  const audioOnlySrc = useMemo(() => {
-    if (!videoId) return ''
-
-    const params = new URLSearchParams({
-      autoplay: '1',
-      mute: '1',
-      controls: '0',
-      playsinline: '1',
-      rel: '0',
-      modestbranding: '1',
-      enablejsapi: '1',
-      loop: '1',
-    })
-
-    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`
-  }, [videoId])
+  const [playAudio, setPlayAudio] = useState(false)
+  const [audioProgress, setAudioProgress] = useState(0)
+  const [audioDuration, setAudioDuration] = useState(0)
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false)
+  const [isAudioMuted, setIsAudioMuted] = useState(false)
+  const audioPlayerRef = useRef(null)
 
   useEffect(() => {
     const list = readFavorites()
@@ -91,95 +54,133 @@ export default function FavouritePlay() {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem('yt-play-on-screen-close', playOnScreenClose)
-  }, [playOnScreenClose])
-
-  useEffect(() => {
-    localStorage.setItem('yt-audio-only-enabled', String(audioOnlyEnabled))
-  }, [audioOnlyEnabled])
-
-  useEffect(() => {
-    if (!audioOnlyEnabled || !isMobileDevice) {
-      setAudioOnlyMode(false)
+    if (!playAudio || !videoId) {
+      if (audioPlayerRef.current) {
+        try {
+          audioPlayerRef.current.stopVideo()
+        } catch {
+          // ignore stop errors
+        }
+        try {
+          audioPlayerRef.current.destroy()
+        } catch {
+          // ignore destroy errors
+        }
+      }
+      audioPlayerRef.current = null
+      setAudioProgress(0)
+      setAudioDuration(0)
+      setIsAudioPlaying(false)
+      setIsAudioMuted(false)
       return
     }
 
-    const updateAudioOnlyMode = () => {
-      setAudioOnlyMode(document.hidden)
+    const loadAudioPlayer = () => {
+      const existingContainer = document.getElementById('youtube-audio-player')
+      if (existingContainer) {
+        existingContainer.innerHTML = ''
+      }
+
+      const container = document.createElement('div')
+      container.id = 'youtube-audio-player'
+      container.style.position = 'absolute'
+      container.style.left = '-9999px'
+      container.style.top = '-9999px'
+      container.style.width = '1px'
+      container.style.height = '1px'
+      container.style.opacity = '0'
+      container.style.pointerEvents = 'none'
+      document.body.appendChild(container)
+
+      if (audioPlayerRef.current) {
+        try {
+          audioPlayerRef.current.destroy()
+        } catch {
+          // ignore destroy errors
+        }
+      }
+
+      audioPlayerRef.current = new window.YT.Player(container.id, {
+        videoId,
+        playerVars: {
+          autoplay: 1,
+          controls: 0,
+          mute: 0,
+          playsinline: 1,
+          rel: 0,
+          modestbranding: 1,
+          iv_load_policy: 3,
+        },
+        events: {
+          onReady: (event) => {
+            const duration = event.target.getDuration() || 0
+            setAudioDuration(duration)
+            setAudioProgress(0)
+            event.target.unMute()
+            event.target.playVideo()
+            setIsAudioMuted(false)
+            setIsAudioPlaying(true)
+          },
+          onStateChange: (event) => {
+            const state = event.data
+            if (state === window.YT.PlayerState.PLAYING) {
+              setIsAudioPlaying(true)
+            } else if (state === window.YT.PlayerState.PAUSED || state === window.YT.PlayerState.ENDED) {
+              setIsAudioPlaying(false)
+            }
+          },
+        },
+      })
     }
 
-    updateAudioOnlyMode()
-    document.addEventListener('visibilitychange', updateAudioOnlyMode)
+    if (window.YT && window.YT.Player) {
+      loadAudioPlayer()
+      return
+    }
+
+    const scriptId = 'youtube-iframe-api-script'
+    let script = document.getElementById(scriptId)
+    if (!script) {
+      script = document.createElement('script')
+      script.id = scriptId
+      script.src = 'https://www.youtube.com/iframe_api'
+      document.body.appendChild(script)
+    }
+
+    window.onYouTubeIframeAPIReady = () => {
+      loadAudioPlayer()
+    }
 
     return () => {
-      document.removeEventListener('visibilitychange', updateAudioOnlyMode)
+      const oldContainer = document.getElementById('youtube-audio-player')
+      if (oldContainer) oldContainer.remove()
+      if (audioPlayerRef.current) {
+        try {
+          audioPlayerRef.current.destroy()
+        } catch {
+          // ignore destroy errors
+        }
+        audioPlayerRef.current = null
+      }
     }
-  }, [audioOnlyEnabled, isMobileDevice])
+  }, [videoId, playAudio])
 
-  // Background playback feature with Media Session API and Wake Lock
   useEffect(() => {
-    if (!videoId || !playOnScreenClose) return
+    if (!playAudio || !audioPlayerRef.current || !window.YT) return
 
-    let wakeLock = null
-
-    // Request wake lock to prevent screen from turning off
-    const requestWakeLock = async () => {
+    const timer = setInterval(() => {
       try {
-        if ('wakeLock' in navigator) {
-          wakeLock = await navigator.wakeLock.request('screen')
-          console.log('Wake lock acquired')
-        }
-      } catch (err) {
-        console.log('Wake lock request failed:', err)
+        const current = audioPlayerRef.current.getCurrentTime?.() || 0
+        const duration = audioPlayerRef.current.getDuration?.() || audioDuration
+        setAudioProgress(current)
+        if (duration) setAudioDuration(duration)
+      } catch {
+        // ignore timer errors
       }
-    }
+    }, 300)
 
-    // Register media session if available
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: 'YouTube Video',
-        artist: 'YouTube',
-        artwork: [
-          { src: 'https://www.youtube.com/favicon.ico', sizes: '96x96', type: 'image/x-icon' }
-        ]
-      })
-
-      navigator.mediaSession.setActionHandler('play', () => {
-        // Handle play action
-      })
-      navigator.mediaSession.setActionHandler('pause', () => {
-        // Handle pause action
-      })
-    }
-
-    // Request wake lock on load
-    requestWakeLock()
-
-    // Handle visibility change to maintain playback and re-acquire wake lock
-    const handleVisibilityChange = async () => {
-      if (!playOnScreenClose) return
-      if (!document.hidden) {
-        // Tab is visible again, re-acquire wake lock
-        await requestWakeLock()
-      } else {
-        // Tab is hidden, set playback state to playing
-        if ('mediaSession' in navigator) {
-          navigator.mediaSession.playbackState = 'playing'
-        }
-      }
-    }
-
-    // Handle page visibility changes (tab switch, screen lock, etc.)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      // Release wake lock when component unmounts
-      if (wakeLock) {
-        wakeLock.release()
-      }
-    }
-  }, [videoId, playOnScreenClose])
+    return () => clearInterval(timer)
+  }, [playAudio, audioDuration])
 
   const handleChange = (event) => {
     setSource(event.target.value)
@@ -189,10 +190,88 @@ export default function FavouritePlay() {
     const id = getYoutubeId(source)
     if (id) {
       setVideoId(id)
+      setPlayAudio(false)
+      setAudioProgress(0)
+      setAudioDuration(0)
     } else {
       setVideoId('')
       alert('Please enter a valid YouTube URL or video ID.')
     }
+  }
+
+  const handlePlayVideo = () => {
+    const id = getYoutubeId(source)
+    if (!id) {
+      alert('Please enter a valid YouTube URL or video ID.')
+      return
+    }
+
+    setVideoId(id)
+    setPlayAudio(false)
+  }
+
+  const handlePlayAudio = () => {
+    const id = getYoutubeId(source)
+    if (!id) {
+      alert('Please enter a valid YouTube URL or video ID.')
+      return
+    }
+
+    setVideoId(id)
+    setPlayAudio(true)
+  }
+
+  const handleToggleAudio = () => {
+    if (!audioPlayerRef.current || !window.YT) {
+      handlePlayAudio()
+      return
+    }
+
+    const state = audioPlayerRef.current.getPlayerState()
+    if (state === window.YT.PlayerState.PLAYING) {
+      audioPlayerRef.current.pauseVideo()
+      setIsAudioPlaying(false)
+    } else {
+      audioPlayerRef.current.playVideo()
+      setIsAudioPlaying(true)
+    }
+  }
+
+  const handleMuteToggle = () => {
+    if (!audioPlayerRef.current || !window.YT) return
+
+    const nextMuted = !isAudioMuted
+    if (nextMuted) {
+      audioPlayerRef.current.mute()
+    } else {
+      audioPlayerRef.current.unMute()
+    }
+    setIsAudioMuted(nextMuted)
+  }
+
+  const handleAudioSeek = (event) => {
+    const value = Number(event.target.value)
+    if (audioPlayerRef.current && typeof audioPlayerRef.current.seekTo === 'function') {
+      audioPlayerRef.current.seekTo(value, true)
+    }
+    setAudioProgress(value)
+  }
+
+  const handleDownloadAudio = () => {
+    const id = getYoutubeId(source) || videoId
+    if (!id) {
+      alert('Please enter a valid YouTube URL or video ID.')
+      return
+    }
+
+    alert('Real YouTube MP3 download is not possible in a pure browser app without a backend or a trusted external service. This project is frontend-only, so the app cannot extract the audio file itself.')
+  }
+
+  const formatTime = (value) => {
+    if (!Number.isFinite(value) || value < 0) return '0:00'
+    const minutes = Math.floor(value / 60)
+    const seconds = Math.floor(value % 60)
+    return `${minutes}:${String(seconds).padStart(2, '0')}`
   }
 
   const handleAddFavorite = () => {
@@ -227,56 +306,6 @@ export default function FavouritePlay() {
       margin: 0
     }}>
       <p style={{ marginBottom: 16 }}>Enter YouTube URL/video ID OR Pick from favourites.</p>
-
-      <label
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          marginBottom: 6,
-          fontSize: 14,
-          color: '#1f2937',
-          cursor: 'pointer',
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={audioOnlyEnabled}
-          onChange={(e) => setAudioOnlyEnabled(e.target.checked)}
-        />
-        On mobile: play audio only when tab is hidden
-      </label>
-
-      <label
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          marginBottom: 6,
-          fontSize: 14,
-          color: '#1f2937',
-          cursor: 'pointer',
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={playOnScreenClose}
-          onChange={(e) => setPlayOnScreenClose(e.target.checked)}
-        />
-        Keep video visible while screen is on
-      </label>
-
-      {isMobileDevice && (
-        <p style={{
-          margin: '0 0 12px',
-          fontSize: 12,
-          lineHeight: 1.5,
-          color: '#b45309',
-        }}>
-          Mobile browsers often pause embedded YouTube playback when the tab is hidden. This toggle tries to switch to audio-only mode automatically when the app is backgrounded.
-        </p>
-      )}
-
       <div
         style={{
           width: '100%',
@@ -374,7 +403,13 @@ export default function FavouritePlay() {
             onClick={handleLoad}
             style={{ padding: '10px 18px', borderRadius: '8px', border: 'none', background: '#0b74de', color: '#fff', cursor: 'pointer', minWidth: '110px', flex: 1 }}
           >
-            Load
+            Play Video
+          </button>
+          <button
+            onClick={handlePlayAudio}
+            style={{ padding: '10px 18px', borderRadius: '8px', border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', minWidth: '120px', flex: 1 }}
+          >
+            Play Audio
           </button>
           <button
             onClick={handleAddFavorite}
@@ -384,7 +419,85 @@ export default function FavouritePlay() {
           </button>
         </div>
       </div>
-      {videoId ? (
+      {playAudio && videoId ? (
+        <div
+          style={{
+            marginTop: 26,
+            width: '100%',
+            maxWidth: 680,
+            background: '#fff',
+            border: '1px solid #e5e7eb',
+            borderRadius: 14,
+            padding: '18px 20px',
+            boxShadow: '0 6px 20px rgba(15, 23, 42, 0.08)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ fontWeight: 700, color: '#1f2937' }}>Audio Player</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={handleMuteToggle}
+                style={{
+                  background: '#374151',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  minWidth: 52,
+                }}
+              >
+                {isAudioMuted ? '🔇' : '🔊'}
+              </button>
+              <button
+                onClick={handleToggleAudio}
+                style={{
+                  background: isAudioPlaying ? '#ef4444' : '#16a34a',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '8px 14px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                {isAudioPlaying ? 'Pause' : 'Play'}
+              </button>
+              <button
+                onClick={handleDownloadAudio}
+                style={{
+                  background: '#dc2626',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '8px 14px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                Download Audio
+              </button>
+            </div>
+          </div>
+
+          <input
+            type="range"
+            min="0"
+            max={audioDuration || 1}
+            value={audioProgress}
+            onChange={handleAudioSeek}
+            style={{ width: '100%', accentColor: '#7c3aed' }}
+          />
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569', fontSize: 12, marginTop: 8 }}>
+            <span>{formatTime(audioProgress)}</span>
+            <span>{formatTime(audioDuration)}</span>
+          </div>
+        </div>
+      ) : null}
+
+      {!playAudio && videoId ? (
         <div
           style={{
             marginTop: 32,
@@ -399,77 +512,26 @@ export default function FavouritePlay() {
             overflow: 'hidden',
           }}
         >
-          {!audioOnlyMode && (
-            <iframe
-              title="YouTube player"
-              src={iframeSrc}
-              style={{
-                width: '100%',
-                maxWidth: 1000,
-                height: '100%',
-                minHeight: 320,
-                maxHeight: 700,
-                border: '0',
-                borderRadius: '12px',
-                background: '#000',
-                display: 'block',
-              }}
-              allow="autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; accelerometer; camera; microphone; payment; web-share"
-              allowFullScreen
-              referrerPolicy="strict-origin-when-cross-origin"
-              playsInline={true}
-            />
-          )}
-
-          {audioOnlyEnabled && audioOnlyMode && (
-            <iframe
-              title="YouTube audio player"
-              src={audioOnlySrc}
-              style={{
-                position: 'absolute',
-                left: '-9999px',
-                width: '1px',
-                height: '1px',
-                opacity: 0,
-                pointerEvents: 'none',
-                border: '0',
-              }}
-              allow="autoplay; encrypted-media"
-              allowFullScreen={false}
-              referrerPolicy="strict-origin-when-cross-origin"
-              playsInline={true}
-            />
-          )}
+          <iframe
+            title="YouTube player"
+            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&mute=0&playsinline=1&rel=0&modestbranding=1`}
+            style={{
+              width: '100%',
+              maxWidth: 1000,
+              height: '100%',
+              minHeight: 320,
+              maxHeight: 700,
+              border: '0',
+              borderRadius: '12px',
+              background: '#000',
+              display: 'block',
+            }}
+            allow="autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; accelerometer; camera; microphone; payment"
+            allowFullScreen
+            playsInline={true}
+          />
         </div>
       ) : null}
-
-      {videoId && (
-        <button
-          type="button"
-          onClick={() => setAudioOnlyMode((value) => !value)}
-          title="Toggle audio only mode"
-          style={{
-            position: 'fixed',
-            right: 18,
-            bottom: 18,
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            border: 'none',
-            background: audioOnlyMode ? '#16a34a' : '#0b74de',
-            color: '#fff',
-            fontSize: 18,
-            boxShadow: '0 8px 20px rgba(0,0,0,0.18)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 50,
-          }}
-        >
-          🔊
-        </button>
-      )}
     </div>
   )
 }
